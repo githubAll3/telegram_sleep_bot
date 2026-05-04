@@ -15,17 +15,28 @@ logger = logging.getLogger(__name__)
 user_states = {}
 
 def parse_duration(text: str):
-    text = text.lower()
+    text = text.lower().strip()
+    if not text or text.startswith('-'):
+        return None
     total_minutes = 0
     hour_matches = re.findall(r'(\d+\.?\d*)\s*(?:ч|h)', text)
     for match in hour_matches:
-        total_minutes += float(match) * 60
+        val = float(match)
+        if val < 0:
+            return None
+        total_minutes += val * 60
     minute_matches = re.findall(r'(\d+\.?\d*)\s*(?:м|m)', text)
     for match in minute_matches:
-        total_minutes += float(match)
+        val = float(match)
+        if val < 0:
+            return None
+        total_minutes += val
     if not hour_matches and not minute_matches:
         try:
-            total_minutes = float(text.strip())
+            val = float(text)
+            if val < 0:
+                return None
+            total_minutes = val
         except ValueError:
             return None
     return int(total_minutes) if total_minutes > 0 else None
