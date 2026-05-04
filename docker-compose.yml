@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  sleep-bot:
+    build: .
+    container_name: telegram-sleep-bot
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./telegram.conf:/app/telegram.conf:ro
+    environment:
+      - TZ=Europe/Moscow
