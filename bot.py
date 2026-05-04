@@ -157,6 +157,7 @@ async def awake_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await awake_button_with_child(update, context, result)
 
 async def awake_button_with_child(update: Update, context: ContextTypes.DEFAULT_TYPE, child):
+    user_id = update.effective_user.id
     current_day = database.get_current_day(child['id'])
     if not current_day:
         await update.message.reply_text(f"Сначала нажмите start для начала дня для {child['name']}.", reply_markup=reply_keyboard)
