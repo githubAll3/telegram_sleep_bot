@@ -12,8 +12,8 @@ def generate_sleep_chart(sleep_data, child_name=None):
     x = range(len(dates))
     width = 0.5
 
-    bars1 = ax.bar(x, night_hours, width, label='Ночной сон', color='#1f77b4')
-    bars2 = ax.bar(x, day_hours, width, bottom=night_hours, label='Дневной сон', color='#ffdd57')
+    bars1 = ax.bar(x, night_hours, width, label='Ночной сон', color='#8e44ad')
+    bars2 = ax.bar(x, day_hours, width, bottom=night_hours, label='Дневной сон', color='#2ecc71')
 
     ax.set_xlabel('Дата')
     ax.set_ylabel('Часы сна')
