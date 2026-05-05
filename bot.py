@@ -51,18 +51,18 @@ reply_keyboard = ReplyKeyboardMarkup(
 )
 
 def get_child_selection_keyboard(children):
-    keyboard = [[InlineKeyboardButton(child['name'], callback_data=f'select_child_{child["id"]}')] for child in children]
+    keyboard = [[InlineKeyboardButton(child['name'], callback_data=f"select_child_{child['id']}")] for child in children]
     return InlineKeyboardMarkup(keyboard)
 
-async def get_user_children_for_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_children_for_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     children = database.get_user_children(user_id)
     if not children:
-        await update.message.reply_text("У вас нет детей. Добавьте ребенка командой /addchild <имя>", reply_markup=reply_keyboard)
+        await update.effective_message.reply_text("У вас нет детей. Добавьте ребенка командой /addchild <имя>")
         return None
     if len(children) == 1:
         return children[0]
-    await update.message.reply_text("Выберите ребенка:", reply_markup=get_child_selection_keyboard(children))
+    await update.effective_message.reply_text("Выберите ребенка:", reply_markup=get_child_selection_keyboard(children))
     return 'awaiting_selection'
 
 async def handle_child_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -84,23 +84,25 @@ async def handle_child_selection(update: Update, context: ContextTypes.DEFAULT_T
 
     if 'pending_action' in context.user_data:
         action = context.user_data.pop('pending_action')
+        msg = query.message
         if action == 'start':
-            await handle_start_with_child(update, context, child)
+            await handle_start_with_child(msg, child)
         elif action == 'sleep':
-            await sleep_button_with_child(update, context, child)
+            await sleep_with_child(msg, child)
         elif action == 'awake':
-            await awake_button_with_child(update, context, child)
+            await awake_with_child(msg, child)
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("handle_start called")
     user_id = update.effective_user.id
     user_states[user_id] = None
-    result = await get_user_children_for_selection(update, context)
+    result = await get_children_for_selection(update, context)
     if result == 'awaiting_selection':
         context.user_data['pending_action'] = 'start'
     elif result:
-        await handle_start_with_child(update, context, result)
+        await handle_start_with_child(update.effective_message, result)
 
-async def handle_start_with_child(update: Update, context: ContextTypes.DEFAULT_TYPE, child):
+async def handle_start_with_child(msg, child):
     current_day = database.get_current_day(child['id'])
     night_sleep_str = "0ч 0м"
     if current_day:
@@ -118,49 +120,51 @@ async def handle_start_with_child(update: Update, context: ContextTypes.DEFAULT_
     sleep_data = database.get_7_day_sleep_data(child['id'])
     chart_buf = plot.generate_sleep_chart(sleep_data, child['name'])
 
-    await update.message.reply_text(
+    await msg.reply_text(
         f"Новый день начат для {child['name']}! Предыдущий ночной сон: {night_sleep_str}",
         reply_markup=reply_keyboard
     )
-    await update.message.reply_photo(photo=chart_buf, caption=f'Сон за последние 7 дней для {child["name"]}')
+    await msg.reply_photo(photo=chart_buf, caption=f"Сон за последние 7 дней для {child['name']}")
     chart_buf.close()
 
-async def sleep_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_sleep(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("handle_sleep called")
     user_id = update.effective_user.id
     user_states[user_id] = None
-    result = await get_user_children_for_selection(update, context)
+    result = await get_children_for_selection(update, context)
     if result == 'awaiting_selection':
         context.user_data['pending_action'] = 'sleep'
     elif result:
-        await sleep_button_with_child(update, context, result)
+        await sleep_with_child(update.effective_message, result)
 
-async def sleep_button_with_child(update: Update, context: ContextTypes.DEFAULT_TYPE, child):
+async def sleep_with_child(msg, child):
     current_day = database.get_current_day(child['id'])
     if not current_day:
-        await update.message.reply_text(f"Сначала нажмите start для начала дня для {child['name']}.", reply_markup=reply_keyboard)
+        await msg.reply_text(f"Сначала нажмите start для начала дня для {child['name']}.", reply_markup=reply_keyboard)
         return
     ongoing_session = database.get_ongoing_sleep_session(child['id'], current_day['id'])
     if ongoing_session:
-        await update.message.reply_text(f"Ребенок {child['name']} уже спит! Сначала нажмите awake.", reply_markup=reply_keyboard)
+        await msg.reply_text(f"Ребенок {child['name']} уже спит! Сначала нажмите awake.", reply_markup=reply_keyboard)
         return
     database.add_sleep_session(child['id'], current_day['id'], get_utc_iso())
     logger.info(f"Sleep session started for child {child['name']}")
-    await update.message.reply_text(f"Сон начат для {child['name']}. Хорошего сна!", reply_markup=reply_keyboard)
+    await msg.reply_text(f"Сон начат для {child['name']}. Хорошего сна!", reply_markup=reply_keyboard)
 
-async def awake_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_awake(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("handle_awake called")
     user_id = update.effective_user.id
     user_states[user_id] = None
-    result = await get_user_children_for_selection(update, context)
+    result = await get_children_for_selection(update, context)
     if result == 'awaiting_selection':
         context.user_data['pending_action'] = 'awake'
     elif result:
-        await awake_button_with_child(update, context, result)
+        await awake_with_child(update.effective_message, result)
 
-async def awake_button_with_child(update: Update, context: ContextTypes.DEFAULT_TYPE, child):
-    user_id = update.effective_user.id
+async def awake_with_child(msg, child):
+    user_id = msg.chat_id
     current_day = database.get_current_day(child['id'])
     if not current_day:
-        await update.message.reply_text(f"Сначала нажмите start для начала дня для {child['name']}.", reply_markup=reply_keyboard)
+        await msg.reply_text(f"Сначала нажмите start для начала дня для {child['name']}.", reply_markup=reply_keyboard)
         return
     ongoing_session = database.get_ongoing_sleep_session(child['id'], current_day['id'])
     if ongoing_session:
@@ -172,13 +176,13 @@ async def awake_button_with_child(update: Update, context: ContextTypes.DEFAULT_
         total_min = night_min + day_min
         total_str = f"{total_min // 60}ч {total_min % 60}м"
         day_str = f"{day_min // 60}ч {day_min % 60}м"
-        await update.message.reply_text(f"Дневной сон для {child['name']}: {day_str}. Итого за день: {total_str}", reply_markup=reply_keyboard)
+        await msg.reply_text(f"Дневной сон для {child['name']}: {day_str}. Итого за день: {total_str}", reply_markup=reply_keyboard)
     else:
-        user_states[user_id] = f'awaiting_manual_sleep_{child["id"]}'
+        user_states[user_id] = f"awaiting_manual_sleep_{child['id']}"
         cancel_keyboard = InlineKeyboardMarkup(
             [[InlineKeyboardButton('Отмена', callback_data='cancel_manual_sleep')]]
         )
-        await update.message.reply_text(
+        await msg.reply_text(
             f"Нет активного сна для {child['name']}. Введите продолжительность дневного сна для учета (например: 1ч 30м, 90м, 1.5ч):",
             reply_markup=cancel_keyboard
         )
@@ -191,12 +195,12 @@ async def handle_manual_sleep_input(update: Update, context: ContextTypes.DEFAUL
     child_id = int(state.split('_')[-1])
     child = database.get_child_by_id(child_id, user_id)
     if not child:
-        await update.message.reply_text("Ошибка: ребенок не найден.", reply_markup=reply_keyboard)
+        await update.effective_message.reply_text("Ошибка: ребенок не найден.", reply_markup=reply_keyboard)
         user_states[user_id] = None
         return
     current_day = database.get_current_day(child['id'])
     if not current_day:
-        await update.message.reply_text(f"Сначала нажмите start для начала дня для {child['name']}.", reply_markup=reply_keyboard)
+        await update.effective_message.reply_text(f"Сначала нажмите start для начала дня для {child['name']}.", reply_markup=reply_keyboard)
         user_states[user_id] = None
         return
     duration_minutes = parse_duration(update.message.text)
@@ -204,7 +208,7 @@ async def handle_manual_sleep_input(update: Update, context: ContextTypes.DEFAUL
         cancel_keyboard = InlineKeyboardMarkup(
             [[InlineKeyboardButton('Отмена', callback_data='cancel_manual_sleep')]]
         )
-        await update.message.reply_text("Неверный формат. Попробуйте еще раз (например: 1ч 30м, 90м, 1.5ч):", reply_markup=cancel_keyboard)
+        await update.effective_message.reply_text("Неверный формат. Попробуйте еще раз (например: 1ч 30м, 90м, 1.5ч):", reply_markup=cancel_keyboard)
         return
     sleep_start_utc = get_utc_iso()
     session_id = database.add_sleep_session(child['id'], current_day['id'], sleep_start_utc)
@@ -214,7 +218,7 @@ async def handle_manual_sleep_input(update: Update, context: ContextTypes.DEFAUL
     total_str = f"{total_min // 60}ч {total_min % 60}м"
     day_str = f"{day_min // 60}ч {day_min % 60}м"
     user_states[user_id] = None
-    await update.message.reply_text(f"Дневной сон для {child['name']}: {day_str}. Итого за день: {total_str}", reply_markup=reply_keyboard)
+    await update.effective_message.reply_text(f"Дневной сон для {child['name']}: {day_str}. Итого за день: {total_str}", reply_markup=reply_keyboard)
 
 async def cancel_manual_sleep(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -225,64 +229,82 @@ async def cancel_manual_sleep(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def get_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    await update.message.reply_text(f"Ваш Telegram ID: `{user_id}`", parse_mode='Markdown')
+    await update.effective_message.reply_text(f"Ваш Telegram ID: `{user_id}`", parse_mode='Markdown')
 
 async def add_child(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not context.args:
-        await update.message.reply_text("Использование: /addchild <имя_ребенка>")
+        await update.effective_message.reply_text("Использование: /addchild <имя_ребенка>")
         return
     child_name = ' '.join(context.args)
     child_id = database.add_child(child_name, user_id)
-    await update.message.reply_text(f"Ребенок '{child_name}' добавлен (ID: {child_id})", reply_markup=reply_keyboard)
+    await update.effective_message.reply_text(f"Ребенок '{child_name}' добавлен (ID: {child_id})", reply_markup=reply_keyboard)
 
 async def share_child(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if len(context.args) != 2:
-        await update.message.reply_text("Использование: /share <имя_ребенка> <telegram_user_id>")
+        await update.effective_message.reply_text("Использование: /share <имя_ребенка> <telegram_user_id>")
         return
     child_name = context.args[0]
     try:
         shared_user_id = int(context.args[1])
     except ValueError:
-        await update.message.reply_text("Неверный Telegram ID. Используйте /get_user_id для получения ID.")
+        await update.effective_message.reply_text("Неверный Telegram ID. Используйте /get_user_id для получения ID.")
         return
     children = database.get_user_children(user_id)
     child = next((c for c in children if c['name'] == child_name and c['primary_user_id'] == user_id), None)
     if not child:
-        await update.message.reply_text(f"Ребенок '{child_name}' не найден или вы не являетесь его владельцем.")
+        await update.effective_message.reply_text(f"Ребенок '{child_name}' не найден или вы не являетесь его владельцем.")
         return
     if database.share_child(child['id'], user_id, shared_user_id):
-        await update.message.reply_text(f"Доступ к ребенку '{child_name}' предоставлен пользователю `{shared_user_id}`", parse_mode='Markdown')
+        await update.effective_message.reply_text(f"Доступ к ребенку '{child_name}' предоставлен пользователю `{shared_user_id}`", parse_mode='Markdown')
     else:
-        await update.message.reply_text(f"Ошибка: доступ уже предоставлен или ребенок не найден.")
+        await update.effective_message.reply_text(f"Ошибка: доступ уже предоставлен или ребенок не найден.")
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
+def is_button_text(text: str) -> bool:
+    return text.lower() in ['start', 'sleep', 'awake']
+
+async def unified_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+    text = update.message.text
     user_id = update.effective_user.id
-    user_states[user_id] = None
-    if text == 'start':
-        await start_command(update, context)
-    elif text == 'sleep':
-        await sleep_button(update, context)
-    elif text == 'awake':
-        await awake_button(update, context)
+
+    # Check if user is in manual sleep input mode
+    state = user_states.get(user_id)
+    if state and state.startswith('awaiting_manual_sleep_'):
+        await handle_manual_sleep_input(update, context)
+        return
+
+    # Check if it's a button press
+    if is_button_text(text):
+        if text.lower() == 'start':
+            await handle_start(update, context)
+        elif text.lower() == 'sleep':
+            await handle_sleep(update, context)
+        elif text.lower() == 'awake':
+            await handle_awake(update, context)
+        return
+
 
 def main():
     database.init_db()
-    application = Application.builder().token(config.BOT_TOKEN).build()
+    app = Application.builder().token(config.BOT_TOKEN).build()
 
-    application.add_handler(CommandHandler('start', start_command))
-    application.add_handler(CommandHandler('get_user_id', get_user_id))
-    application.add_handler(CommandHandler('addchild', add_child))
-    application.add_handler(CommandHandler('share', share_child))
-    application.add_handler(CallbackQueryHandler(handle_child_selection, pattern='^select_child_'))
-    application.add_handler(CallbackQueryHandler(cancel_manual_sleep, pattern='^cancel_manual_sleep$'))
-    application.add_handler(MessageHandler(filters.Text(['start', 'sleep', 'awake']) & filters.ChatType.PRIVATE, button_handler))
-    application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE & ~filters.Text(['start', 'sleep', 'awake']), handle_manual_sleep_input))
+    # Command handlers
+    app.add_handler(CommandHandler('start', handle_start))
+    app.add_handler(CommandHandler('get_user_id', get_user_id))
+    app.add_handler(CommandHandler('addchild', add_child))
+    app.add_handler(CommandHandler('share', share_child))
 
-    logger.info("Bot started")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Callback query handlers
+    app.add_handler(CallbackQueryHandler(handle_child_selection, pattern='^select_child_'))
+    app.add_handler(CallbackQueryHandler(cancel_manual_sleep, pattern='^cancel_manual_sleep$'))
+
+    # Unified text handler - handles both buttons and manual input
+    app.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT, unified_text_handler))
+
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main()

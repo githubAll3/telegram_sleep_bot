@@ -7,6 +7,24 @@ DB_PATH = DB_DIR / "sleep.db"
 
 def init_db():
     DB_DIR.mkdir(exist_ok=True)
+
+    # Check if we need to recreate the database
+    recreate = False
+    if DB_PATH.exists():
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(days)")
+            columns = [row[1] for row in cursor.fetchall()]
+            conn.close()
+            if 'child_id' not in columns:
+                recreate = True
+        except Exception:
+            recreate = True
+
+    if recreate:
+        DB_PATH.unlink(missing_ok=True)
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
