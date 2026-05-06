@@ -147,11 +147,9 @@ async def sleep_with_child(msg, child):
         await msg.reply_text(f"Ребенок {child['name']} уже спит! Сначала нажмите awake.", reply_markup=reply_keyboard)
         return
     database.add_sleep_session(child['id'], current_day['id'], get_utc_iso())
-    logger.info(f"Sleep session started for child {child['name']}")
     await msg.reply_text(f"Сон начат для {child['name']}. Хорошего сна!", reply_markup=reply_keyboard)
 
 async def handle_awake(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("handle_awake called")
     user_id = update.effective_user.id
     user_states[user_id] = None
     result = await get_children_for_selection(update, context)
@@ -174,9 +172,10 @@ async def awake_with_child(msg, child):
         database.close_sleep_session(ongoing_session['id'], sleep_end_utc.isoformat(), duration_minutes, 'day')
         night_min, day_min = database.get_day_sleep_totals(current_day['id'])
         total_min = night_min + day_min
+        duration_str = f"{duration_minutes // 60}ч {duration_minutes % 60}м"
         total_str = f"{total_min // 60}ч {total_min % 60}м"
-        day_str = f"{day_min // 60}ч {day_min % 60}м"
-        await msg.reply_text(f"Дневной сон для {child['name']}: {day_str}. Итого за день: {total_str}", reply_markup=reply_keyboard)
+        # day_str = f"{day_min // 60}ч {day_min % 60}м"
+        await msg.reply_text(f"{child['name']} проспал: {duration_str}. Итого за день: {total_str}", reply_markup=reply_keyboard)
     else:
         user_states[user_id] = f"awaiting_manual_sleep_{child['id']}"
         cancel_keyboard = InlineKeyboardMarkup(
